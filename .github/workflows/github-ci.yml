@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Cache Poetry dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pypoetry
+          ~/.virtualenvs
+        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-poetry-
+
+    - name: Install dependencies
+      run: |
+        pip install poetry
+        poetry install
+
+    - name: Run linting
+      run: poetry run ruff check .
+
+    - name: Run tests
+      run: make tests
+
+    - name: Run checks
+      run: make check
+
+    - name: Log in to GitHub Container Registry
+      if: github.ref == 'refs/heads/main'
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+    - name: Build Docker image
+      if: github.ref == 'refs/heads/main'
+      run: docker build -t ghcr.io/${{ github.repository }}:latest .
+
+    - name: Push Docker image
+      if: github.ref == 'refs/heads/main'
+      run: docker push ghcr.io/${{ github.repository }}:latest

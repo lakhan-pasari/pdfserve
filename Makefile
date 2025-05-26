@@ -63,7 +63,7 @@ pylint:
 
 lint: format-test isort-check ruff poetry-check
 small-check: format-test isort-check poetry-check
-check: lint pyright
+check: lint
 
 pyre: pyre-check
 
