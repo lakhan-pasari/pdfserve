@@ -4,7 +4,7 @@ RUN mkdir -p $workdir
 WORKDIR $workdir
 RUN apt-get update -y
 RUN apt-get install -y openssl ca-certificates
-RUN apt-get install -y libffi-dev build-essential libssl-dev git rustc cargo
+RUN apt-get install -y libffi-dev build-essential libssl-dev git rustc cargo wkhtmltopdf
 RUN pip install pip -U
 RUN pip install poetry -U
 COPY poetry.lock $workdir
