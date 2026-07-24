@@ -119,11 +119,11 @@ run-server:
 CONTAINER_REGISTRY=ghcr.io/ant31/$(package)
 
 
-docker-push-local: docker-build-locall
-    docker push $(CONTAINER_REGISTRY):latest
+docker-push-local: docker-build-local
+	docker push $(CONTAINER_REGISTRY):latest
 
 docker-build-local:
-    docker build --network=host -t $(CONTAINER_REGISTRY):latest .
+	docker build --network=host -t $(CONTAINER_REGISTRY):latest .
 
 docker-push:
 	docker buildx build --push -t $(CONTAINER_REGISTRY):latest .
