@@ -311,6 +311,7 @@ class PdfTransform:
         tmpdir: str | None = None,
         use_temporary: bool = True,
         dpi: int = 96,
+        rotations: Sequence[int] | None = None,
     ):
         self.dpi = dpi
         self._input_files = files
@@ -319,6 +320,7 @@ class PdfTransform:
         self.use_temporary = use_temporary
         self._loaded = False
         self._files = []
+        self._rotations = list(rotations) if rotations else []
 
     def reload(self):
         self._files = []
@@ -342,17 +344,28 @@ class PdfTransform:
         return ""
 
     async def load(
-        self, fileinput: PDFInput | PdfFileInfo | Image, dest_dir: str = "", use_temporary: bool = True
+        self,
+        fileinput: PDFInput | PdfFileInfo | Image,
+        dest_dir: str = "",
+        use_temporary: bool = True,
+        rotate: int = 0,
     ) -> PdfFileInfo:
         if isinstance(fileinput, str | Path):
-            info = await self.download_file(fileinput, dest_dir=dest_dir, use_temporary=use_temporary)
+            info = await self.download_file(
+                fileinput, dest_dir=dest_dir, use_temporary=use_temporary, rotate=rotate
+            )
         elif isinstance(fileinput, Image):
             info = PdfFileInfo(
-                filename=self._img_filename(fileinput), source=self._img_filename(fileinput), image=fileinput
+                filename=self._img_filename(fileinput),
+                source=self._img_filename(fileinput),
+                image=fileinput,
+                rotate=rotate,
             )
         elif isinstance(fileinput, IOBase):
-            info = PdfFileInfo(filename="", content=fileinput)
+            info = PdfFileInfo(filename="", content=fileinput, rotate=rotate)
         elif isinstance(fileinput, PdfFileInfo):
+            if rotate:
+                fileinput.rotate = rotate
             info = await self.load_image(fileinput)
         else:
             raise ValueError(f"Invalid file type: {type(fileinput)}")
@@ -366,7 +379,9 @@ class PdfTransform:
             raise ValueError(f"Invalid file: {info}, missing content or path or pdf")
         return info
 
-    async def download_file(self, source: str | Path, dest_dir: str = "", use_temporary: bool = True) -> PdfFileInfo:
+    async def download_file(
+        self, source: str | Path, dest_dir: str = "", use_temporary: bool = True, rotate: int = 0
+    ) -> PdfFileInfo:
         tmp = Path("")
         if use_temporary:
             tmp = tempfile.SpooledTemporaryFile(dir=self.tmpdir)  # pylint: disable=consider-using-with
@@ -377,6 +392,7 @@ class PdfTransform:
             path=Path(str(finfo.path)),
             content=finfo.content,
             image=None,
+            rotate=rotate,
         )
         return await self.load_image(p)
 
@@ -393,6 +409,8 @@ class PdfTransform:
             # Skip non-image files
             logger.debug("Failed to open image: %s", e)
         if pdfinfo.image:
+            if pdfinfo.rotate:
+                pdfinfo.image = pdfinfo.image.rotate(-pdfinfo.rotate, expand=True)
             pdfinfo.pdf = self._img_to_pdf(pdfinfo.image, None, scale=pdfinfo.scale, dpi=self.dpi)
         return pdfinfo
 
@@ -403,12 +421,14 @@ class PdfTransform:
         res = []
         n = 5
         split_list = [files[i * n : (i + 1) * n] for i in range((len(files) + n - 1) // n)]
+        index = 0
         for split_files in split_list:
-            res.append(
-                await asyncio.gather(
-                    *[self.load(f, dest_dir=dest_dir, use_temporary=use_temporary) for f in split_files]
-                )
-            )
+            tasks = []
+            for f in split_files:
+                rotate = self._rotations[index] if index < len(self._rotations) else 0
+                tasks.append(self.load(f, dest_dir=dest_dir, use_temporary=use_temporary, rotate=rotate))
+                index += 1
+            res.append(await asyncio.gather(*tasks))
         return [x for subres in res for x in subres]
 
     async def merge(

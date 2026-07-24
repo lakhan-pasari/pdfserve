@@ -125,6 +125,15 @@ async def merge_pdf(
     ] = "",
     dpi: Annotated[int, Query(description="DPI to use for input images")] = 96,
     outline: Annotated[bool, Query(description="create an outline with the name of the file as items")] = True,
+    rotations: Annotated[
+        list[int] | None,
+        Query(
+            description=(
+                "per-file clockwise rotation in degrees, aligned by index with files. "
+                "If provided, must have the same length as files. Only applied to images."
+            )
+        ),
+    ] = None,
 ) -> FileResponse:
     """
     Merge pdf files into one.
@@ -132,14 +141,20 @@ async def merge_pdf(
     - **name**: the name of the merged file, if not provided, a random name will be generated
     - **files**: a list of files to merge, can be a list of URL to download the file from or the uploaded file as binary object
     - **outline**: if True, create an outline with the name of the file, if False, no outline will be added
+    - **rotations**: optional per-file clockwise rotation in degrees, aligned by index with files
     """
     if files is None:
         files = []
     inputs = prepare_files(files)
+    if rotations and len(rotations) != len(inputs):
+        raise HTTPException(
+            status_code=422,
+            detail=f"rotations length ({len(rotations)}) must match files length ({len(inputs)})",
+        )
     logger.info("Merging: %s, outline: %s", str(inputs), outline)
     with tempfile.NamedTemporaryFile(suffix=".pdf", mode="w+b", delete=False) as tmpf:
         background_tasks.add_task(cleanup, tmpf)
-        pt = PdfTransform(files=inputs, dest_dir="", use_temporary=True, dpi=dpi)
+        pt = PdfTransform(files=inputs, dest_dir="", use_temporary=True, dpi=dpi, rotations=rotations)
         output = await pt.merge(name=name, output=tmpf.file, outline=outline)
         if output is None:
             raise ValueError("No output")
